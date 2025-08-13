@@ -1,13 +1,8 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import styled, { keyframes } from 'styled-components';
+import { Editor } from '@tinymce/tinymce-react';
 import { EditableStickyNoteProps } from '../types';
-
-// Declare Quill global
-declare global {
-  interface Window {
-    Quill: any;
-  }
-}
+import BundledEditor from '../BundleEditor';
 
 const fadeIn = keyframes`
   from {
@@ -83,7 +78,7 @@ const StickyNoteContent = styled.div`
     font-style: italic;
   }
 
-  /* Handle HTML content from Quill */
+  /* Handle HTML content from TinyMCE */
   p {
     margin: 0.5em 0;
   }
@@ -103,13 +98,6 @@ const StickyNoteContent = styled.div`
 
   em {
     font-style: italic;
-  }
-
-  blockquote {
-    border-left: 3px solid #00b894;
-    background: rgba(0, 184, 148, 0.1);
-    margin: 0.5em 0;
-    padding: 0.5em 1em;
   }
 
   /* Custom scrollbar */
@@ -152,58 +140,36 @@ const StickyNoteEditor = styled.div`
 const EditorContainer = styled.div`
   margin-bottom: 15px;
   
-  /* Quill Editor Styling */
-  .ql-container {
+  /* TinyMCE Shadow DOM Support */
+  .tox {
     font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-    font-size: 14px;
-    line-height: 1.6;
+  }
+
+  .tox .tox-editor-header {
+    border-radius: 4px 4px 0 0;
+  }
+
+  .tox .tox-edit-area {
     border-radius: 0 0 4px 4px;
   }
 
-  .ql-toolbar {
-    border-radius: 4px 4px 0 0;
-    border-color: #e0e0e0;
+  .tox-tinymce {
+    border: 1px solid #e0e0e0 !important;
+    border-radius: 4px;
   }
 
-  .ql-container.ql-snow {
-    border-color: #e0e0e0;
+  /* Ensure TinyMCE works in shadow DOM */
+  .tox .tox-menu {
+    z-index: 10000 !important;
   }
 
-  .ql-editor {
-    color: #2d3436;
-    min-height: 150px;
-    max-height: 250px;
-    overflow-y: auto;
+  .tox .tox-collection {
+    z-index: 10000 !important;
   }
 
-  .ql-editor.ql-blank::before {
-    color: #636e72;
-    font-style: italic;
-  }
-
-  /* Custom Quill toolbar styling */
-  .ql-toolbar.ql-snow {
-    padding: 8px;
-  }
-
-  .ql-toolbar.ql-snow .ql-formats {
-    margin-right: 15px;
-  }
-
-  /* Shadow DOM support - ensure dialogs are visible */
-  .ql-tooltip {
-    z-index: 10001 !important;
-  }
-
-  /* Responsive adjustments */
   @media (max-width: 768px) {
-    .ql-toolbar.ql-snow .ql-formats {
-      margin-right: 8px;
-    }
-    
-    .ql-editor {
-      min-height: 120px;
-      max-height: 200px;
+    .tox-tinymce {
+      max-width: 100%;
     }
   }
 `;
@@ -259,81 +225,7 @@ const EditableStickyNote: React.FC<EditableStickyNoteProps> = ({
   const [isEditing, setIsEditing] = useState<boolean>(false);
   const [noteContent, setNoteContent] = useState<string>(initialContent);
   const [displayContent, setDisplayContent] = useState<string>('Click to add a note...');
-  const editorRef = useRef<HTMLDivElement>(null);
-  const quillInstanceRef = useRef<any>(null);
-  const editorIdRef = useRef<string>(`quill-editor-${Math.random().toString(36).substr(2, 9)}`);
-
-  // Initialize Quill when editing starts
-  const initializeQuill = useCallback(async () => {
-    if (!window.Quill || !editorRef.current || quillInstanceRef.current) {
-      return;
-    }
-
-    try {
-      // Quill configuration
-      const toolbarOptions = [
-        [{ 'header': [1, 2, 3, false] }],
-        ['bold', 'italic', 'underline', 'strike'],
-        [{ 'color': [] }, { 'background': [] }],
-        [{ 'list': 'ordered'}, { 'list': 'bullet' }],
-        [{ 'align': [] }],
-        ['blockquote', 'code-block'],
-        ['link'],
-        ['clean']
-      ];
-
-      const quillConfig = {
-        theme: 'snow',
-        modules: {
-          toolbar: toolbarOptions
-        },
-        placeholder: 'Start writing your note...',
-        // Shadow DOM support
-        ...(shadowRoot && {
-          bounds: shadowRoot as any,
-        })
-      };
-
-      // Initialize Quill
-      quillInstanceRef.current = new window.Quill(editorRef.current, quillConfig);
-
-      // Set initial content
-      if (noteContent) {
-        quillInstanceRef.current.clipboard.dangerouslyPasteHTML(noteContent);
-      }
-
-      // Focus the editor
-      setTimeout(() => {
-        quillInstanceRef.current.focus();
-      }, 100);
-
-      // Handle shadow DOM specific adjustments
-      if (shadowRoot) {
-        const tooltip = editorRef.current.querySelector('.ql-tooltip');
-        if (tooltip) {
-          (tooltip as HTMLElement).style.zIndex = '10001';
-        }
-      }
-
-    } catch (error) {
-      console.error('Failed to initialize Quill:', error);
-    }
-  }, [noteContent, shadowRoot]);
-
-  // Cleanup Quill instance
-  const cleanupQuill = useCallback(() => {
-    if (quillInstanceRef.current) {
-      try {
-        // Quill doesn't have a destroy method, but we can clear the container
-        if (editorRef.current) {
-          editorRef.current.innerHTML = '';
-        }
-        quillInstanceRef.current = null;
-      } catch (error) {
-        console.error('Failed to cleanup Quill:', error);
-      }
-    }
-  }, []);
+  const editorRef = useRef<any>(null);
 
   useEffect(() => {
     if (noteContent) {
@@ -347,49 +239,76 @@ const EditableStickyNote: React.FC<EditableStickyNoteProps> = ({
     }
   }, [noteContent]);
 
-  // Initialize Quill when editing starts
-  useEffect(() => {
-    if (isEditing) {
-      // Wait for the container to be rendered
-      setTimeout(() => {
-        initializeQuill();
-      }, 100);
-    } else {
-      cleanupQuill();
-    }
-
-    return () => {
-      cleanupQuill();
-    };
-  }, [isEditing, initializeQuill, cleanupQuill]);
-
-  // Cleanup on unmount
-  useEffect(() => {
-    return () => {
-      cleanupQuill();
-    };
-  }, [cleanupQuill]);
+  // TinyMCE configuration optimized for shadow DOM
+  const editorConfig = {
+    height: 200,
+    menubar: false,
+    plugins: [
+      'advlist', 'autolink', 'lists', 'link', 'image', 'charmap', 
+      'searchreplace', 'visualblocks', 'code', 'fullscreen',
+      'insertdatetime', 'media', 'table', 'help', 'wordcount'
+    ],
+    toolbar: 'undo redo | blocks | ' +
+      'bold italic forecolor | alignleft aligncenter ' +
+      'alignright alignjustify | bullist numlist outdent indent | ' +
+      'removeformat | help',
+    content_style: `
+      body { 
+        font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; 
+        font-size: 14px; 
+        line-height: 1.6;
+        color: #2d3436;
+        margin: 8px;
+      }
+      p { margin: 0.5em 0; }
+      ul, ol { margin: 0.5em 0; padding-left: 1.5em; }
+      h1, h2, h3, h4, h5, h6 { margin: 0.5em 0; }
+    `,
+    branding: false,
+    resize: false,
+    elementpath: false,
+    statusbar: false,
+    uploadcare_public_key: '4bc12f546ea367ed4b4d',
+    // Shadow DOM support configuration
+    ...(shadowRoot && {
+      target_node: shadowRoot,
+      setup: (editor: any) => {
+        // Ensure dialogs and menus work within shadow DOM
+        editor.on('init', () => {
+          const editorContainer = editor.getContainer();
+          if (shadowRoot && shadowRoot.contains(editorContainer)) {
+            // Set up proper containment within shadow root
+            editor.getBody().style.outline = 'none';
+          }
+        });
+      }
+    })
+  };
 
   const handleNoteClick = (): void => {
     setIsEditing(true);
   };
 
   const handleSave = (): void => {
-    if (quillInstanceRef.current) {
-      const content = quillInstanceRef.current.root.innerHTML;
+    if (editorRef.current) {
+      const content = editorRef.current.getContent();
       setNoteContent(content);
       
       // Call the onSave callback if provided
       if (onSave) {
         onSave(content);
       }
+      
+      setIsEditing(false);
     }
-    
-    setIsEditing(false);
   };
 
   const handleCancel = (): void => {
     setIsEditing(false);
+  };
+
+  const handleEditorChange = (content: string): void => {
+    // Optional: Handle real-time content changes
   };
 
   return (
@@ -407,13 +326,12 @@ const EditableStickyNote: React.FC<EditableStickyNoteProps> = ({
       ) : (
         <StickyNoteEditor>
           <EditorContainer>
-            <div
-              ref={editorRef}
-              id={editorIdRef.current}
-              style={{
-                minHeight: '150px',
-                backgroundColor: 'white'
-              }}
+            <BundledEditor
+              licenseKey='gpl'
+              onInit={(evt: any, editor: any) => editorRef.current = editor}
+              initialValue={noteContent}
+              init={editorConfig}
+              onEditorChange={handleEditorChange}
             />
           </EditorContainer>
           <EditorControls>
