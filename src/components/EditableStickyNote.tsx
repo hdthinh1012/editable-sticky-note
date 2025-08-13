@@ -1,22 +1,13 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import styled, { keyframes } from 'styled-components';
-import EditorJS from '@editorjs/editorjs';
-import Header from '@editorjs/header';
-import List from '@editorjs/list';
-import Paragraph from '@editorjs/paragraph';
-import Quote from '@editorjs/quote';
-import Marker from '@editorjs/marker';
-import CodeTool from '@editorjs/code';
-import Delimiter from '@editorjs/delimiter';
-import InlineCode from '@editorjs/inline-code';
-import LinkTool from '@editorjs/link';
-import Embed from '@editorjs/embed';
-import Table from '@editorjs/table';
-import Warning from '@editorjs/warning';
-import Image from '@editorjs/image';
-import Raw from '@editorjs/raw';
-import Checklist from '@editorjs/checklist';
-import { EditableStickyNoteProps, EditorJSData } from '../types';
+import { EditableStickyNoteProps } from '../types';
+
+// Declare Quill global
+declare global {
+  interface Window {
+    Quill: any;
+  }
+}
 
 const fadeIn = keyframes`
   from {
@@ -91,6 +82,54 @@ const StickyNoteContent = styled.div`
     color: #636e72;
     font-style: italic;
   }
+
+  /* Handle HTML content from Quill */
+  p {
+    margin: 0.5em 0;
+  }
+
+  ul, ol {
+    margin: 0.5em 0;
+    padding-left: 1.5em;
+  }
+
+  h1, h2, h3, h4, h5, h6 {
+    margin: 0.5em 0;
+  }
+
+  strong {
+    font-weight: bold;
+  }
+
+  em {
+    font-style: italic;
+  }
+
+  blockquote {
+    border-left: 3px solid #00b894;
+    background: rgba(0, 184, 148, 0.1);
+    margin: 0.5em 0;
+    padding: 0.5em 1em;
+  }
+
+  /* Custom scrollbar */
+  &::-webkit-scrollbar {
+    width: 6px;
+  }
+
+  &::-webkit-scrollbar-track {
+    background: #f1f1f1;
+    border-radius: 3px;
+  }
+
+  &::-webkit-scrollbar-thumb {
+    background: #c1c1c1;
+    border-radius: 3px;
+  }
+
+  &::-webkit-scrollbar-thumb:hover {
+    background: #a8a8a8;
+  }
 `;
 
 const StickyNoteEditor = styled.div`
@@ -111,73 +150,61 @@ const StickyNoteEditor = styled.div`
 `;
 
 const EditorContainer = styled.div`
-  min-height: 200px;
-  max-height: 400px;
-  overflow-y: auto;
-  border: 1px solid #e0e0e0;
-  border-radius: 4px;
-  padding: 10px;
   margin-bottom: 15px;
-  background: #fafafa;
-
-  /* EditorJS Styling Overrides */
-  .codex-editor {
-    background: transparent;
-  }
-
-  .codex-editor__redactor {
-    padding: 0;
-  }
-
-  .ce-block__content {
-    max-width: none;
-    margin: 0;
-  }
-
-  .ce-paragraph {
+  
+  /* Quill Editor Styling */
+  .ql-container {
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
     font-size: 14px;
     line-height: 1.6;
+    border-radius: 0 0 4px 4px;
+  }
+
+  .ql-toolbar {
+    border-radius: 4px 4px 0 0;
+    border-color: #e0e0e0;
+  }
+
+  .ql-container.ql-snow {
+    border-color: #e0e0e0;
+  }
+
+  .ql-editor {
     color: #2d3436;
+    min-height: 150px;
+    max-height: 250px;
+    overflow-y: auto;
   }
 
-  .ce-header {
-    color: #2d3436;
+  .ql-editor.ql-blank::before {
+    color: #636e72;
+    font-style: italic;
   }
 
-  .ce-quote {
-    border-left: 3px solid #00b894;
-    background: rgba(0, 184, 148, 0.1);
+  /* Custom Quill toolbar styling */
+  .ql-toolbar.ql-snow {
+    padding: 8px;
   }
 
-  .ce-list {
-    color: #2d3436;
+  .ql-toolbar.ql-snow .ql-formats {
+    margin-right: 15px;
   }
 
-  .ce-checklist__item-text {
-    color: #2d3436;
+  /* Shadow DOM support - ensure dialogs are visible */
+  .ql-tooltip {
+    z-index: 10001 !important;
   }
 
-  /* Custom scrollbar */
-  &::-webkit-scrollbar {
-    width: 8px;
-  }
-
-  &::-webkit-scrollbar-track {
-    background: #f1f1f1;
-    border-radius: 4px;
-  }
-
-  &::-webkit-scrollbar-thumb {
-    background: #c1c1c1;
-    border-radius: 4px;
-  }
-
-  &::-webkit-scrollbar-thumb:hover {
-    background: #a8a8a8;
-  }
-
+  /* Responsive adjustments */
   @media (max-width: 768px) {
-    max-height: 300px;
+    .ql-toolbar.ql-snow .ql-formats {
+      margin-right: 8px;
+    }
+    
+    .ql-editor {
+      min-height: 120px;
+      max-height: 200px;
+    }
   }
 `;
 
@@ -219,7 +246,6 @@ const CancelButton = styled(Button)`
   color: #1a1a1a;
   border-color: #e6e6e6;
 
-  border-color: #e6e6e6;
   &:hover {
     background: #e6e6e6;
   }
@@ -227,196 +253,142 @@ const CancelButton = styled(Button)`
 
 const EditableStickyNote: React.FC<EditableStickyNoteProps> = ({ 
   initialContent = '', 
-  onSave 
+  onSave,
+  shadowRoot = null
 }) => {
   const [isEditing, setIsEditing] = useState<boolean>(false);
   const [noteContent, setNoteContent] = useState<string>(initialContent);
   const [displayContent, setDisplayContent] = useState<string>('Click to add a note...');
   const editorRef = useRef<HTMLDivElement>(null);
-  const editorInstanceRef = useRef<EditorJS | null>(null);
+  const quillInstanceRef = useRef<any>(null);
+  const editorIdRef = useRef<string>(`quill-editor-${Math.random().toString(36).substr(2, 9)}`);
+
+  // Initialize Quill when editing starts
+  const initializeQuill = useCallback(async () => {
+    if (!window.Quill || !editorRef.current || quillInstanceRef.current) {
+      return;
+    }
+
+    try {
+      // Quill configuration
+      const toolbarOptions = [
+        [{ 'header': [1, 2, 3, false] }],
+        ['bold', 'italic', 'underline', 'strike'],
+        [{ 'color': [] }, { 'background': [] }],
+        [{ 'list': 'ordered'}, { 'list': 'bullet' }],
+        [{ 'align': [] }],
+        ['blockquote', 'code-block'],
+        ['link'],
+        ['clean']
+      ];
+
+      const quillConfig = {
+        theme: 'snow',
+        modules: {
+          toolbar: toolbarOptions
+        },
+        placeholder: 'Start writing your note...',
+        // Shadow DOM support
+        ...(shadowRoot && {
+          bounds: shadowRoot as any,
+        })
+      };
+
+      // Initialize Quill
+      quillInstanceRef.current = new window.Quill(editorRef.current, quillConfig);
+
+      // Set initial content
+      if (noteContent) {
+        quillInstanceRef.current.clipboard.dangerouslyPasteHTML(noteContent);
+      }
+
+      // Focus the editor
+      setTimeout(() => {
+        quillInstanceRef.current.focus();
+      }, 100);
+
+      // Handle shadow DOM specific adjustments
+      if (shadowRoot) {
+        const tooltip = editorRef.current.querySelector('.ql-tooltip');
+        if (tooltip) {
+          (tooltip as HTMLElement).style.zIndex = '10001';
+        }
+      }
+
+    } catch (error) {
+      console.error('Failed to initialize Quill:', error);
+    }
+  }, [noteContent, shadowRoot]);
+
+  // Cleanup Quill instance
+  const cleanupQuill = useCallback(() => {
+    if (quillInstanceRef.current) {
+      try {
+        // Quill doesn't have a destroy method, but we can clear the container
+        if (editorRef.current) {
+          editorRef.current.innerHTML = '';
+        }
+        quillInstanceRef.current = null;
+      } catch (error) {
+        console.error('Failed to cleanup Quill:', error);
+      }
+    }
+  }, []);
 
   useEffect(() => {
     if (noteContent) {
-      // Convert EditorJS data to display text
-      try {
-        const data: EditorJSData = JSON.parse(noteContent);
-        if (data.blocks && data.blocks.length > 0) {
-          const textContent = data.blocks
-            .map(block => {
-              switch (block.type) {
-                case 'paragraph':
-                  return block.data.text;
-                case 'header':
-                  return block.data.text;
-                case 'list':
-                  return block.data.items.join('\n• ');
-                case 'quote':
-                  return `"${block.data.text}"`;
-                case 'checklist':
-                  return block.data.items.map((item: any) => 
-                    `${item.checked ? '✓' : '○'} ${item.text}`
-                  ).join('\n');
-                default:
-                  return block.data.text || '';
-              }
-            })
-            .join('\n\n');
-          setDisplayContent(textContent || 'Click to add a note...');
-        }
-      } catch (e) {
-        // If it's not JSON, treat as plain text
-        setDisplayContent(noteContent || 'Click to add a note...');
-      }
+      // Convert HTML content to display text, preserving some formatting
+      const tempDiv = document.createElement('div');
+      tempDiv.innerHTML = noteContent;
+      const textContent = tempDiv.textContent || tempDiv.innerText || '';
+      setDisplayContent(textContent.trim() || 'Click to add a note...');
     } else {
       setDisplayContent('Click to add a note...');
     }
   }, [noteContent]);
 
-  const initializeEditor = async (): Promise<void> => {
-    if (editorInstanceRef.current || !editorRef.current) {
-      return;
+  // Initialize Quill when editing starts
+  useEffect(() => {
+    if (isEditing) {
+      // Wait for the container to be rendered
+      setTimeout(() => {
+        initializeQuill();
+      }, 100);
+    } else {
+      cleanupQuill();
     }
 
-    const editor = new EditorJS({
-      holder: editorRef.current,
-      tools: {
-        header: {
-          class: Header as any,
-          config: {
-            placeholder: 'Enter a header',
-            levels: [1, 2, 3, 4],
-            defaultLevel: 2
-          }
-        },
-        paragraph: {
-          class: Paragraph as any,
-          inlineToolbar: true,
-          config: {
-            placeholder: 'Start writing...'
-          }
-        },
-        list: {
-          class: List as any,
-          inlineToolbar: true,
-          config: {
-            defaultStyle: 'unordered'
-          }
-        },
-        checklist: {
-          class: Checklist as any,
-          inlineToolbar: true,
-        },
-        quote: {
-          class: Quote as any,
-          inlineToolbar: true,
-          shortcut: 'CMD+SHIFT+O',
-          config: {
-            quotePlaceholder: 'Enter a quote',
-            captionPlaceholder: 'Quote\'s author',
-          },
-        },
-        marker: {
-          class: Marker as any,
-          shortcut: 'CMD+SHIFT+M',
-        },
-        code: {
-          class: CodeTool as any,
-          shortcut: 'CMD+SHIFT+C',
-        },
-        delimiter: Delimiter as any,
-        inlineCode: {
-          class: InlineCode as any,
-          shortcut: 'CMD+SHIFT+M',
-        },
-        linkTool: {
-          class: LinkTool as any,
-          config: {
-            endpoint: 'http://localhost:8008/fetchUrl', // You'll need to implement this endpoint
-          }
-        },
-        embed: {
-          class: Embed as any,
-          config: {
-            services: {
-              youtube: true,
-              coub: true
-            }
-          }
-        },
-        table: {
-          class: Table as any,
-          inlineToolbar: true,
-          config: {
-            rows: 2,
-            cols: 3,
-          },
-        },
-        warning: {
-          class: Warning as any     ,
-          inlineToolbar: true,
-          shortcut: 'CMD+SHIFT+W',
-          config: {
-            titlePlaceholder: 'Title',
-            messagePlaceholder: 'Message',
-          },
-        },
-        image: {
-          class: Image as any,
-          config: {
-            endpoints: {
-              byFile: 'http://localhost:8008/uploadFile', // You'll need to implement this endpoint
-              byUrl: 'http://localhost:8008/fetchUrl',
-            }
-          }
-        },
-        raw: Raw as any,
-      },
-      data: noteContent ? JSON.parse(noteContent) : {},
-      placeholder: 'Start writing your note...',
-    });
+    return () => {
+      cleanupQuill();
+    };
+  }, [isEditing, initializeQuill, cleanupQuill]);
 
-    await editor.isReady;
-    editorInstanceRef.current = editor;
-  };
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      cleanupQuill();
+    };
+  }, [cleanupQuill]);
 
-  const handleNoteClick = async (): Promise<void> => {
+  const handleNoteClick = (): void => {
     setIsEditing(true);
-    // Wait for the next render cycle to ensure the editor container is in the DOM
-    setTimeout(() => {
-      initializeEditor();
-    }, 0);
   };
 
-  const handleSave = async (): Promise<void> => {
-    if (editorInstanceRef.current) {
-      try {
-        const savedData = await editorInstanceRef.current.save();
-        const jsonContent = JSON.stringify(savedData);
-        setNoteContent(jsonContent);
-        
-        // Call the onSave callback if provided
-        if (onSave) {
-          onSave(jsonContent);
-        }
-        
-        // Clean up editor
-        if (editorInstanceRef.current.destroy) {
-          editorInstanceRef.current.destroy();
-        }
-        editorInstanceRef.current = null;
-        setIsEditing(false);
-      } catch (error) {
-        console.error('Saving failed:', error);
+  const handleSave = (): void => {
+    if (quillInstanceRef.current) {
+      const content = quillInstanceRef.current.root.innerHTML;
+      setNoteContent(content);
+      
+      // Call the onSave callback if provided
+      if (onSave) {
+        onSave(content);
       }
     }
+    
+    setIsEditing(false);
   };
 
   const handleCancel = (): void => {
-    // Clean up editor
-    if (editorInstanceRef.current && editorInstanceRef.current.destroy) {
-      editorInstanceRef.current.destroy();
-    }
-    editorInstanceRef.current = null;
     setIsEditing(false);
   };
 
@@ -424,13 +396,26 @@ const EditableStickyNote: React.FC<EditableStickyNoteProps> = ({
     <StickyNoteContainer $isEditing={isEditing}>
       {!isEditing ? (
         <StickyNoteDisplay onClick={handleNoteClick}>
-          <StickyNoteContent>
-            {displayContent}
+          <StickyNoteContent 
+            dangerouslySetInnerHTML={
+              noteContent ? { __html: noteContent } : undefined
+            }
+          >
+            {!noteContent && 'Click to add a note...'}
           </StickyNoteContent>
         </StickyNoteDisplay>
       ) : (
         <StickyNoteEditor>
-          <EditorContainer ref={editorRef} />
+          <EditorContainer>
+            <div
+              ref={editorRef}
+              id={editorIdRef.current}
+              style={{
+                minHeight: '150px',
+                backgroundColor: 'white'
+              }}
+            />
+          </EditorContainer>
           <EditorControls>
             <SaveButton onClick={handleSave}>
               Save

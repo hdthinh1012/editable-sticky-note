@@ -6,14 +6,14 @@ export interface Note {
 export interface EditableStickyNoteProps {
   initialContent?: string;
   onSave?: (content: string) => void;
+  shadowRoot?: ShadowRoot | null;
 }
 
-export interface EditorJSData {
-  time?: number;
-  blocks: Array<{
-    id?: string;
-    type: string;
-    data: any;
-  }>;
-  version?: string;
+export interface TinyMCEConfig {
+  height?: number;
+  menubar?: boolean;
+  plugins?: string[];
+  toolbar?: string;
+  content_style?: string;
+  setup?: (editor: any) => void;
 }
