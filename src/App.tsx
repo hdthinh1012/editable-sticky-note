@@ -3,6 +3,10 @@ import styled from 'styled-components';
 import EditableStickyNote from './components/EditableStickyNote';
 import { Note } from './types';
 
+interface AppProps {
+  shadowRoot?: ShadowRoot;
+}
+
 const AppContainer = styled.div`
   text-align: center;
   min-height: 100vh;
@@ -97,7 +101,7 @@ const AddNoteButton = styled.button`
   }
 `;
 
-const App: React.FC = () => {
+const App: React.FC<AppProps> = ({ shadowRoot }) => {
   const [notes, setNotes] = useState<Note[]>([
     { id: 1, content: '' },
     { id: 2, content: '' },
@@ -133,6 +137,7 @@ const App: React.FC = () => {
             key={note.id}
             initialContent={note.content}
             onSave={(content) => handleNoteSave(note.id, content)}
+            shadowRoot={shadowRoot}
           />
         ))}
         
