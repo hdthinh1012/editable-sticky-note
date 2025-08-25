@@ -1,13 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import styled, { keyframes } from 'styled-components';
+import { Editor } from '@tinymce/tinymce-react';
 import { EditableStickyNoteProps } from '../types';
-
-// Declare Quill global
-declare global {
-  interface Window {
-    Quill: any;
-  }
-}
 
 const fadeIn = keyframes`
   from {
@@ -83,7 +77,7 @@ const StickyNoteContent = styled.div`
     font-style: italic;
   }
 
-  /* Handle HTML content from Quill */
+  /* Handle HTML content from TinyMCE */
   p {
     margin: 0.5em 0;
   }
@@ -152,58 +146,48 @@ const StickyNoteEditor = styled.div`
 const EditorContainer = styled.div`
   margin-bottom: 15px;
   
-  /* Quill Editor Styling */
-  .ql-container {
-    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-    font-size: 14px;
-    line-height: 1.6;
+  /* TinyMCE Editor Styling */
+  .tox-tinymce {
+    border-radius: 4px;
+    border-color: #e0e0e0 !important;
+  }
+
+  .tox-toolbar {
+    border-radius: 4px 4px 0 0;
+  }
+
+  .tox-edit-area {
     border-radius: 0 0 4px 4px;
   }
 
-  .ql-toolbar {
-    border-radius: 4px 4px 0 0;
+  .tox-edit-area__iframe {
+    min-height: 150px !important;
+    max-height: 250px !important;
+  }
+
+  /* TinyMCE content styling */
+  .tox .tox-editor-header {
     border-color: #e0e0e0;
   }
 
-  .ql-container.ql-snow {
+  .tox .tox-statusbar {
     border-color: #e0e0e0;
-  }
-
-  .ql-editor {
-    color: #2d3436;
-    min-height: 150px;
-    max-height: 250px;
-    overflow-y: auto;
-  }
-
-  .ql-editor.ql-blank::before {
-    color: #636e72;
-    font-style: italic;
-  }
-
-  /* Custom Quill toolbar styling */
-  .ql-toolbar.ql-snow {
-    padding: 8px;
-  }
-
-  .ql-toolbar.ql-snow .ql-formats {
-    margin-right: 15px;
   }
 
   /* Shadow DOM support - ensure dialogs are visible */
-  .ql-tooltip {
+  .tox-dialog {
+    z-index: 10001 !important;
+  }
+
+  .tox-pop {
     z-index: 10001 !important;
   }
 
   /* Responsive adjustments */
   @media (max-width: 768px) {
-    .ql-toolbar.ql-snow .ql-formats {
-      margin-right: 8px;
-    }
-    
-    .ql-editor {
-      min-height: 120px;
-      max-height: 200px;
+    .tox-edit-area__iframe {
+      min-height: 120px !important;
+      max-height: 200px !important;
     }
   }
 `;
@@ -259,81 +243,40 @@ const EditableStickyNote: React.FC<EditableStickyNoteProps> = ({
   const [isEditing, setIsEditing] = useState<boolean>(false);
   const [noteContent, setNoteContent] = useState<string>(initialContent);
   const [displayContent, setDisplayContent] = useState<string>('Click to add a note...');
-  const editorRef = useRef<HTMLDivElement>(null);
-  const quillInstanceRef = useRef<any>(null);
-  const editorIdRef = useRef<string>(`quill-editor-${Math.random().toString(36).substr(2, 9)}`);
+  const editorRef = useRef<any>(null);
+  const [editorContent, setEditorContent] = useState<string>(initialContent);
 
-  // Initialize Quill when editing starts
-  const initializeQuill = useCallback(async () => {
-    if (!window.Quill || !editorRef.current || quillInstanceRef.current) {
-      return;
-    }
-
-    try {
-      // Quill configuration
-      const toolbarOptions = [
-        [{ 'header': [1, 2, 3, false] }],
-        ['bold', 'italic', 'underline', 'strike'],
-        [{ 'color': [] }, { 'background': [] }],
-        [{ 'list': 'ordered'}, { 'list': 'bullet' }],
-        [{ 'align': [] }],
-        ['blockquote', 'code-block'],
-        ['link'],
-        ['clean']
-      ];
-
-      const quillConfig = {
-        theme: 'snow',
-        modules: {
-          toolbar: toolbarOptions
-        },
-        placeholder: 'Start writing your note...',
-        // Shadow DOM support
-        ...(shadowRoot && {
-          bounds: shadowRoot as any,
-        })
-      };
-
-      // Initialize Quill
-      quillInstanceRef.current = new window.Quill(editorRef.current, quillConfig);
-
-      // Set initial content
-      if (noteContent) {
-        quillInstanceRef.current.clipboard.dangerouslyPasteHTML(noteContent);
+  // TinyMCE configuration
+  const tinymceConfig = {
+    height: 200,
+    menubar: false,
+    plugins: [
+      'advlist', 'autolink', 'lists', 'link', 'image', 'charmap', 'preview',
+      'anchor', 'searchreplace', 'visualblocks', 'code', 'fullscreen',
+      'insertdatetime', 'media', 'table', 'help', 'wordcount'
+    ],
+    toolbar: 'undo redo | blocks | ' +
+      'bold italic forecolor | alignleft aligncenter ' +
+      'alignright alignjustify | bullist numlist outdent indent | ' +
+      'removeformat | help',
+    content_style: `
+      body { 
+        font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; 
+        font-size: 14px; 
+        line-height: 1.6; 
+        color: #2d3436;
       }
-
-      // Focus the editor
-      setTimeout(() => {
-        quillInstanceRef.current.focus();
-      }, 100);
-
-      // Handle shadow DOM specific adjustments
-      if (shadowRoot) {
-        const tooltip = editorRef.current.querySelector('.ql-tooltip');
-        if (tooltip) {
-          (tooltip as HTMLElement).style.zIndex = '10001';
-        }
-      }
-
-    } catch (error) {
-      console.error('Failed to initialize Quill:', error);
-    }
-  }, [noteContent, shadowRoot]);
-
-  // Cleanup Quill instance
-  const cleanupQuill = useCallback(() => {
-    if (quillInstanceRef.current) {
-      try {
-        // Quill doesn't have a destroy method, but we can clear the container
-        if (editorRef.current) {
-          editorRef.current.innerHTML = '';
-        }
-        quillInstanceRef.current = null;
-      } catch (error) {
-        console.error('Failed to cleanup Quill:', error);
-      }
-    }
-  }, []);
+    `,
+    placeholder: 'Start writing your note...',
+    branding: false,
+    resize: false,
+    statusbar: false,
+    skin: 'oxide',
+    content_css: 'default',
+    ...(shadowRoot && {
+      target: shadowRoot as any,
+    })
+  };
 
   useEffect(() => {
     if (noteContent) {
@@ -347,48 +290,31 @@ const EditableStickyNote: React.FC<EditableStickyNoteProps> = ({
     }
   }, [noteContent]);
 
-  // Initialize Quill when editing starts
   useEffect(() => {
-    if (isEditing) {
-      // Wait for the container to be rendered
-      setTimeout(() => {
-        initializeQuill();
-      }, 100);
-    } else {
-      cleanupQuill();
-    }
-
-    return () => {
-      cleanupQuill();
-    };
-  }, [isEditing, initializeQuill, cleanupQuill]);
-
-  // Cleanup on unmount
-  useEffect(() => {
-    return () => {
-      cleanupQuill();
-    };
-  }, [cleanupQuill]);
+    setEditorContent(initialContent);
+  }, [initialContent]);
 
   const handleNoteClick = (): void => {
     setIsEditing(true);
   };
 
+  const handleEditorChange = (content: string) => {
+    setEditorContent(content);
+  };
+
   const handleSave = (): void => {
-    if (quillInstanceRef.current) {
-      const content = quillInstanceRef.current.root.innerHTML;
-      setNoteContent(content);
-      
-      // Call the onSave callback if provided
-      if (onSave) {
-        onSave(content);
-      }
+    setNoteContent(editorContent);
+    
+    // Call the onSave callback if provided
+    if (onSave) {
+      onSave(editorContent);
     }
     
     setIsEditing(false);
   };
 
   const handleCancel = (): void => {
+    setEditorContent(noteContent); // Reset to saved content
     setIsEditing(false);
   };
 
@@ -398,22 +324,19 @@ const EditableStickyNote: React.FC<EditableStickyNoteProps> = ({
         <StickyNoteDisplay onClick={handleNoteClick}>
           <StickyNoteContent 
             dangerouslySetInnerHTML={
-              noteContent ? { __html: noteContent } : undefined
+              noteContent ? { __html: noteContent } : { __html: 'Click to add a note...' }
             }
-          >
-            {!noteContent && 'Click to add a note...'}
-          </StickyNoteContent>
+          ></StickyNoteContent>
         </StickyNoteDisplay>
       ) : (
         <StickyNoteEditor>
           <EditorContainer>
-            <div
+            <Editor
+              apiKey='rstkw9aldwn982tcztij2gu7ju5y6hax6herqegrlhg3t7r4'
               ref={editorRef}
-              id={editorIdRef.current}
-              style={{
-                minHeight: '150px',
-                backgroundColor: 'white'
-              }}
+              value={editorContent}
+              init={tinymceConfig}
+              onEditorChange={handleEditorChange}
             />
           </EditorContainer>
           <EditorControls>
